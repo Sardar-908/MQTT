@@ -1,0 +1,76 @@
+import paho.mqtt.client as mqtt
+import time
+import json
+import Adafruit_DHT
+
+# MQTT Configuration
+MQTT_BROKER = "broker.hivemq.com"
+MQTT_PORT = 1883
+MQTT_TOPIC = "pi/dht"
+CLIENT_ID = "8y1TqdmY45"
+
+# Sensor Setup
+SENSOR = Adafruit_DHT.DHT11
+SENSOR_PIN = 4
+
+# Global connection state
+connected = False
+
+# MQTT Callbacks
+def on_connect(client, userdata, flags, rc):
+    global connected
+    if rc == 0:
+        if not connected:
+            print("Connected to MQTT Broker!")
+        connected = True
+    else:
+        print(f"Connection failed with code {rc}")
+
+def on_disconnect(client, userdata, rc):
+    global connected
+    if connected:
+        print("Disconnected from MQTT Broker.")
+    connected = False
+
+# Read Sensor Data Function
+def read_sensor():
+    humidity, temperature = Adafruit_DHT.read_retry(SENSOR, SENSOR_PIN)
+    if humidity is not None and temperature is not None:
+        print(f"Sensor Read - Temp: {temperature}°C, Humidity: {humidity}%")
+        return {"temp": temperature, "humidity": humidity}
+    else:
+        print("Failed to read from sensor.")
+    return None
+
+# Main Execution
+if __name__ == "__main__":
+    # Initialize MQTT Client with ID
+    client = mqtt.Client(CLIENT_ID)
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+
+    # Connect to MQTT Broker
+    try:
+        client.connect(MQTT_BROKER, MQTT_PORT)
+    except Exception as e:
+        print(f"Failed to connect to MQTT Broker: {e}")
+        exit(1)
+
+    # Start MQTT Loop and Publish Data
+    try:
+        client.loop_start()
+        while True:
+            if connected:
+                data = read_sensor()
+                if data:
+                    client.publish(MQTT_TOPIC, json.dumps(data), qos=1)
+                    print(f"Published: {data}")
+            else:
+                print("Waiting for MQTT connection...")
+            time.sleep(5)
+    except KeyboardInterrupt:
+        print("\nStopping script...")
+    finally:
+        client.loop_stop()
+        client.disconnect()
+        print("Disconnected from MQTT Broker.")
